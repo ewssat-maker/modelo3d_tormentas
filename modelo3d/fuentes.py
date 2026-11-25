@@ -27,7 +27,8 @@ def sondeo(lat, lon):
     return (np.array(P, float), np.array(Z, float), np.array(T, float), np.array(Td, float),
             -ws * np.sin(wd), -ws * np.cos(wd))
 
-def celdas(radar):
+def celdas_meta(radar):
+    """Devuelve (lista de celdas, datos del seguimiento para diagnóstico)."""
     r = requests.get(f"{BACKEND}/api/radar/{radar}/seguimiento", timeout=60); r.raise_for_status()
     j = r.json()
     out = []
@@ -36,7 +37,11 @@ def celdas(radar):
     out += [c for c in (j.get("otras_celdas") or []) if isinstance(c, dict)]
     for i, c in enumerate(out):
         c.setdefault("id", f"{radar}-{i + 1}")
-    return out
+    ult = (j.get("frames") or [{}])[-1].get("hora")
+    return out, {"seguimiento_actualizado": j.get("actualizado"), "ultimo_frame": ult, "mensaje": j.get("mensaje"), "n_celdas": len(out)}
+
+def celdas(radar):
+    return celdas_meta(radar)[0]
 
 # ---- Satélite GOES-19 ABI banda 13 (IR 10.3 µm) ----
 def _ultimo_cmi(banda="C13"):
