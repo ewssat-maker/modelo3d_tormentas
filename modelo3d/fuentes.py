@@ -45,14 +45,20 @@ def celdas(radar):
 
 # ---- Satélite GOES-19 ABI banda 13 (IR 10.3 µm) ----
 def _ultimo_cmi(banda="C13"):
+    """Último archivo de la banda en el bucket público. Si la carpeta de la hora actual aún no existe (primeros minutos de cada
+    hora) o está vacía, retrocede hasta 3 horas."""
     import s3fs
-    fs = s3fs.S3FileSystem(anon=True); now = dt.datetime.utcnow()
-    for back in (0, 1):
+    fs = s3fs.S3FileSystem(anon=True); now = dt.datetime.utcnow(); ultimo_error = None
+    for back in range(4):
         t = now - dt.timedelta(hours=back)
-        ls = fs.ls(f"noaa-goes19/ABI-L2-CMIPF/{t:%Y}/{t.timetuple().tm_yday:03d}/{t:%H}/")
-        ls = sorted(x for x in ls if f"M6{banda}" in x or f"M3{banda}" in x or f"{banda}_G19" in x)
+        carpeta = f"noaa-goes19/ABI-L2-CMIPF/{t:%Y}/{t.timetuple().tm_yday:03d}/{t:%H}/"
+        try:
+            ls = fs.ls(carpeta)
+        except FileNotFoundError as e:
+            ultimo_error = e; continue
+        ls = sorted(x for x in ls if f"{banda}_G19" in x)
         if ls: return fs, ls[-1]
-    raise RuntimeError("sin archivos GOES recientes")
+    raise RuntimeError(f"sin archivos GOES recientes ({ultimo_error})")
 
 def tb_minima(celdas_xy, radio_km=12):
     """Para cada (lat,lon) devuelve la temperatura de brillo mínima (°C) en su entorno (tope convectivo) y la hora del escaneo."""
