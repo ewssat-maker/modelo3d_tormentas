@@ -32,8 +32,10 @@ def celdas(radar):
     j = r.json()
     out = []
     if isinstance(j.get("celda"), dict):
-        out.append(j["celda"])
+        out.append(dict(j["celda"], principal=True))
     out += [c for c in (j.get("otras_celdas") or []) if isinstance(c, dict)]
+    for i, c in enumerate(out):
+        c.setdefault("id", f"{radar}-{i + 1}")
     return out
 
 # ---- Satélite GOES-19 ABI banda 13 (IR 10.3 µm) ----
