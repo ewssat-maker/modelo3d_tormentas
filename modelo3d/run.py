@@ -8,7 +8,7 @@ def correr(radares=("RMA11", "RMA20", "RMA7"), usar_satelite=True):
     resultado = {"generado_utc": dt.datetime.utcnow().isoformat() + "Z", "aviso": "Estructura estimada (modelo), no medición del barrido vertical", "radares": {}}
     for rd in radares:
         try:
-            cs = fuentes.celdas(rd)
+            cs, meta = fuentes.celdas_meta(rd)
         except Exception as e:
             resultado["radares"][rd] = {"error": f"celdas: {e}", "celdas": []}; continue
         cs = sorted(cs, key=lambda c: -(c.get("max_dbz") or 0))[:15]     # las 15 más intensas
@@ -31,6 +31,7 @@ def correr(radares=("RMA11", "RMA20", "RMA7"), usar_satelite=True):
                 salida.append({"id": c.get("id"), "error": str(e)})
         resultado["radares"][rd] = {"satelite_utc": hsat, "celdas": salida}
         if aviso_sat: resultado["radares"][rd]["aviso_sat"] = aviso_sat
+        resultado["radares"][rd]["diagnostico"] = meta
     return resultado
 
 def enviar(res):
