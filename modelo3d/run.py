@@ -24,7 +24,7 @@ def correr(radares=("RMA11", "RMA20", "RMA7"), usar_satelite=True):
                 if k not in cache:
                     p, z, T, Td, u, v = fuentes.sondeo(*k); cache[k] = (z, T, termo.analizar(p, z, T, Td, u, v))
                 z, T, amb = cache[k]
-                top = termo.altura_por_temperatura(z, T, tb) if (tb is not None and tb < -30) else None
+                top = termo.altura_por_temperatura(z, T, tb) if (tb is not None and tb < -5) else None
                 s = celda.modelar(c, amb, top); s["tb_ir_c"] = None if tb is None else round(tb, 1); s["ambiente"] = amb
                 salida.append(s)
             except Exception as e:
