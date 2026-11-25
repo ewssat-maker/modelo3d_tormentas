@@ -36,10 +36,12 @@ def modelar(celda, amb, tope_ir_m=None):
     """celda: dict del seguimiento; amb: salida de termo.analizar. Devuelve estructura 3D estimada (m s.n.m.)."""
     zmax = float(celda.get("max_dbz") or 40)
     base = amb["lcl_m"]; iso0 = amb.get("iso0_m") or 4500; suelo = amb.get("z_suelo_m", 0)
-    convectiva = amb["cape"] >= 100 and amb.get("el_m")
+    por_amb = bool(amb["cape"] >= 100 and amb.get("el_m"))
+    por_sat = bool(tope_ir_m and tope_ir_m - iso0 >= 3000)     # tope frío y alto medido por satélite
+    convectiva = por_amb or por_sat
     if tope_ir_m:
         tope, fuente = float(tope_ir_m), "satélite IR"
-    elif convectiva:
+    elif por_amb:
         tope, fuente = float(amb["el_m"]), "equilibrio termodinámico (EL)"
     else:
         tope, fuente = float(max(iso0 + 1000, base + 3000)), "ambiente sin inestabilidad: tope genérico (baja confianza)"
@@ -54,4 +56,5 @@ def modelar(celda, amb, tope_ir_m=None):
             "inclinacion": {"dx_km": round(su * k / 10, 2), "dy_km": round(sv * k / 10, 2)},
             "granizo": granizo(zmax, amb["cape"], iso0, amb.get("iso_m20_m"), tope), "w_max": amb["w_max"],
             "convectiva": bool(convectiva), "fuente_tope": fuente,
-            "confianza": "media" if (tope_ir_m and convectiva) else "baja"}
+            "confianza": "media" if (tope_ir_m and convectiva) else "baja",
+            "convectiva_por": "satélite" if por_sat else ("ambiente" if por_amb else None)}
