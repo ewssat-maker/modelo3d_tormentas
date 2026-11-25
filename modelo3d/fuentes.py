@@ -29,7 +29,12 @@ def sondeo(lat, lon):
 
 def celdas(radar):
     r = requests.get(f"{BACKEND}/api/radar/{radar}/seguimiento", timeout=60); r.raise_for_status()
-    j = r.json(); return j.get("celdas") or j.get("cells") or []
+    j = r.json()
+    out = []
+    if isinstance(j.get("celda"), dict):
+        out.append(j["celda"])
+    out += [c for c in (j.get("otras_celdas") or []) if isinstance(c, dict)]
+    return out
 
 # ---- Satélite GOES-19 ABI banda 13 (IR 10.3 µm) ----
 def _ultimo_cmi(banda="C13"):
