@@ -3,3 +3,4 @@ requests
 xarray
 h5netcdf
 s3fs
+h5py
