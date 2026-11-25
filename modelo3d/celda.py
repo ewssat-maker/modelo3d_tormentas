@@ -54,7 +54,7 @@ def modelar(celda, amb, tope_ir_m=None):
     return {"id": celda.get("id"), "lat": celda.get("lat"), "lon": celda.get("lon"), "max_dbz": zmax,
             "base_m": base, "tope_m": round(tope), "iso0_m": iso0, "capas": capas,
             "inclinacion": {"dx_km": round(su * k / 10, 2), "dy_km": round(sv * k / 10, 2)},
-            "granizo": granizo(zmax, amb["cape"], iso0, amb.get("iso_m20_m"), tope), "w_max": amb["w_max"],
+            "granizo": granizo(zmax, amb["cape"], iso0, amb.get("iso_m20_m"), tope), "w_max": amb["w_max"] if por_amb else None,
             "convectiva": bool(convectiva), "fuente_tope": fuente,
             "confianza": "media" if (tope_ir_m and convectiva) else "baja",
             "convectiva_por": "satélite" if por_sat else ("ambiente" if por_amb else None)}
