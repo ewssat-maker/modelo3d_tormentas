@@ -62,33 +62,48 @@ def cruce(z, f, nivel=0.0, desde=0):
         if a * b < 0: return z[i - 1] + (z[i] - z[i - 1]) * a / (a - b)
     return None
 
-def analizar(p, z, T, Td, u=None, v=None):
-    """p (hPa, decreciente), z (m), T, Td (°C) del ambiente. Devuelve dict de parámetros."""
-    p, z, T, Td = map(np.asarray, (p, z, T, Td))
+def _una_parcela(p, z, T, Td):
+    """Flotabilidad de una parcela que sale del primer nivel de los arrays. Devuelve dict o None."""
     pc, pL = parcela(p, p[0], T[0], Td[0])
     Tv_p = (pc + 273.15) * (1 + 0.61 * rs(p, pc))
     Tv_e = (T + 273.15) * (1 + 0.61 * rs(p, Td))
     flot = g * (Tv_p - Tv_e) / Tv_e
     zL = float(np.interp(pL, p[::-1], z[::-1]))
-    # LFC/EL: primer cambio de signo de flotabilidad por encima del LCL
     lfc = el = None
-    i0 = int(np.searchsorted(z, zL))
-    pos = flot > 0
+    i0 = int(np.searchsorted(z, zL)); pos = flot > 0
     for i in range(max(i0, 1), len(z)):
         if lfc is None and pos[i] and not pos[i - 1]:
             lfc = z[i - 1] + (z[i] - z[i - 1]) * (-flot[i - 1]) / (flot[i] - flot[i - 1])
         if lfc is not None and (not pos[i]) and pos[i - 1]:
             el = z[i - 1] + (z[i] - z[i - 1]) * flot[i - 1] / (flot[i - 1] - flot[i]); break
+    if lfc is None and pos[max(i0, 0)]: lfc = zL          # ya flotante en el LCL
     if lfc is not None and el is None: el = float(z[-1])
     cape = cin = 0.0
     for i in range(1, len(z)):
         dz = z[i] - z[i - 1]; b = 0.5 * (flot[i] + flot[i - 1])
-        if lfc is not None and z[i] > lfc and z[i] <= el: cape += max(b, 0) * dz
-        elif lfc is None or z[i] <= lfc: cin += min(b, 0) * dz
+        if lfc is None: continue
+        if z[i] <= lfc: cin += min(b, 0) * dz
+        elif z[i - 1] < el: cape += max(b, 0) * dz
+    return dict(cape=float(cape), cin=float(cin) if lfc is not None else None, zL=zL,
+                lfc=None if lfc is None else float(lfc), el=None if el is None else float(el))
+
+def analizar(p, z, T, Td, u=None, v=None, capa_hpa=300):
+    """Parcela MÁS INESTABLE entre los niveles dentro de `capa_hpa` sobre el suelo (típico en convección con sierras).
+    p (hPa, decreciente), z (m s.n.m.), T, Td (°C)."""
+    p, z, T, Td = map(np.asarray, (p, z, T, Td))
+    mejor, orig = None, 0
+    for k in range(len(p)):
+        if p[k] < p[0] - capa_hpa: break
+        r = _una_parcela(p[k:], z[k:], T[k:], Td[k:])
+        if mejor is None or r["cape"] > mejor["cape"]: mejor, orig = r, k
+    cape = mejor["cape"]
     z0 = cruce(z, T, 0.0); z20 = cruce(z, T, -20.0)
-    r = dict(cape=round(float(cape), 1), cin=round(float(cin), 1), lcl_m=round(zL), lfc_m=None if lfc is None else round(lfc),
-             el_m=None if el is None else round(el), iso0_m=None if z0 is None else round(z0),
-             iso_m20_m=None if z20 is None else round(z20), w_max=round(float(np.sqrt(2 * cape)), 1), w_tipica=round(float(0.5 * np.sqrt(2 * cape)), 1))
+    r = dict(cape=round(cape, 1), cin=None if mejor["cin"] is None else round(mejor["cin"], 1),
+             lcl_m=round(mejor["zL"]), lfc_m=None if mejor["lfc"] is None else round(mejor["lfc"]),
+             el_m=None if mejor["el"] is None else round(mejor["el"]),
+             iso0_m=None if z0 is None else round(z0), iso_m20_m=None if z20 is None else round(z20),
+             w_max=round(float(np.sqrt(2 * cape)), 1), w_tipica=round(float(0.5 * np.sqrt(2 * cape)), 1),
+             parcela_origen_hpa=float(p[orig]), z_suelo_m=round(float(z[0])))
     if u is not None and v is not None:
         zs = z - z[0]
         u6, v6 = np.interp(6000, zs, u), np.interp(6000, zs, v)

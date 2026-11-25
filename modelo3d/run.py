@@ -12,10 +12,11 @@ def correr(radares=("RMA11", "RMA20", "RMA7"), usar_satelite=True):
         except Exception as e:
             resultado["radares"][rd] = {"error": f"celdas: {e}", "celdas": []}; continue
         cs = sorted(cs, key=lambda c: -(c.get("max_dbz") or 0))[:15]     # las 15 más intensas
-        salida, tbs, hsat = [], [None] * len(cs), None
+        salida, tbs, hsat, aviso_sat = [], [None] * len(cs), None, None
         if usar_satelite and cs:
             try: tbs, hsat = fuentes.tb_minima([(c["lat"], c["lon"]) for c in cs])
-            except Exception as e: resultado["radares"].setdefault(rd, {})["aviso_sat"] = str(e)
+            except Exception as e:
+                aviso_sat = f"{type(e).__name__}: {e}"; print("SAT ERROR", rd, aviso_sat)
         cache = {}
         for c, tb in zip(cs, tbs):
             k = (round(c["lat"], 1), round(c["lon"], 1))      # un sondeo por celda de 0.1° (se reutiliza)
@@ -29,6 +30,7 @@ def correr(radares=("RMA11", "RMA20", "RMA7"), usar_satelite=True):
             except Exception as e:
                 salida.append({"id": c.get("id"), "error": str(e)})
         resultado["radares"][rd] = {"satelite_utc": hsat, "celdas": salida}
+        if aviso_sat: resultado["radares"][rd]["aviso_sat"] = aviso_sat
     return resultado
 
 def enviar(res):
