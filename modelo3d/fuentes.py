@@ -60,30 +60,41 @@ def _ultimo_cmi(banda="C13"):
         if ls: return fs, ls[-1]
     raise RuntimeError(f"sin archivos GOES recientes ({ultimo_error})")
 
-def tb_minima(celdas_xy, radio_km=12):
-    """Para cada (lat,lon) devuelve la temperatura de brillo mínima (°C) en su entorno (tope convectivo) y la hora del escaneo."""
+def abrir_cmi():
+    """Abre el último archivo de la banda 13 y deja listo lo necesario para ubicar cualquier punto en la imagen (se abre una sola vez por corrida)."""
     import xarray as xr
     fs, key = _ultimo_cmi()
     ds = xr.open_dataset(fs.open(key), engine="h5netcdf")
-    proj = ds["goes_imager_projection"]; H = proj.perspective_point_height + proj.semi_major_axis
-    r_eq, r_pol, lam0 = proj.semi_major_axis, proj.semi_minor_axis, np.radians(proj.longitude_of_projection_origin)
-    x, y = ds["x"].values, ds["y"].values; cmi = ds["CMI"].values
-    out = []
-    for lat, lon in celdas_xy:
-        la, lo = np.radians(lat), np.radians(lon)
-        phic = np.arctan((r_pol ** 2 / r_eq ** 2) * np.tan(la))
-        rc = r_pol / np.sqrt(1 - ((r_eq ** 2 - r_pol ** 2) / r_eq ** 2) * np.cos(phic) ** 2)
-        sx = H - rc * np.cos(phic) * np.cos(lo - lam0); sy = -rc * np.cos(phic) * np.sin(lo - lam0); sz = rc * np.sin(phic)
-        xs = np.arcsin(-sy / np.sqrt(sx ** 2 + sy ** 2 + sz ** 2)); ys = np.arctan(sz / sx)
-        i, j = int(np.argmin(abs(y - ys))), int(np.argmin(abs(x - xs)))
-        n = max(int(radio_km / 2.0), 2)   # ~2 km por píxel
-        w = cmi[max(i - n, 0): i + n + 1, max(j - n, 0): j + n + 1]
-        out.append(float(np.nanmin(w)) - 273.15 if np.isfinite(w).any() else None)
+    proj = ds["goes_imager_projection"]
     m = re.search(r"_s(\d{14})", key)
-    return out, (m.group(1) if m else None)
+    return {"H": proj.perspective_point_height + proj.semi_major_axis, "r_eq": proj.semi_major_axis, "r_pol": proj.semi_minor_axis,
+            "lam0": np.radians(proj.longitude_of_projection_origin), "x": ds["x"].values, "y": ds["y"].values,
+            "cmi": ds["CMI"].values, "hora": m.group(1) if m else None}
+
+def _angulos(c, lat, lon, h_m=0.0):
+    """Ángulos de barrido (x, y) con que el satélite ve un punto a h_m metros sobre la superficie en (lat, lon).
+    Con h_m > 0 es el paralaje: el tope de la nube se ve en un píxel más alejado del punto subsatélite que su pie."""
+    la, lo = np.radians(lat), np.radians(lon); r_eq, r_pol = c["r_eq"], c["r_pol"]
+    phic = np.arctan((r_pol ** 2 / r_eq ** 2) * np.tan(la))
+    rc = r_pol / np.sqrt(1 - ((r_eq ** 2 - r_pol ** 2) / r_eq ** 2) * np.cos(phic) ** 2) + h_m
+    sx = c["H"] - rc * np.cos(phic) * np.cos(lo - c["lam0"]); sy = -rc * np.cos(phic) * np.sin(lo - c["lam0"]); sz = rc * np.sin(phic)
+    return np.arcsin(-sy / np.sqrt(sx ** 2 + sy ** 2 + sz ** 2)), np.arctan(sz / sx)
+
+def tb_en(c, lat, lon, h_m=0.0, radio_km=12):
+    """Temperatura de brillo mínima (°C) alrededor de una celda, buscando en el píxel donde se ve su tope a h_m de altura."""
+    xs, ys = _angulos(c, lat, lon, h_m)
+    i, j = int(np.argmin(abs(c["y"] - ys))), int(np.argmin(abs(c["x"] - xs)))
+    n = max(int(radio_km / 2.0), 2)   # ~2 km por píxel
+    w = c["cmi"][max(i - n, 0): i + n + 1, max(j - n, 0): j + n + 1]
+    return float(np.nanmin(w)) - 273.15 if np.isfinite(w).any() else None
+
+def tb_minima(celdas_xy, radio_km=12):
+    """Versión simple (sin paralaje, tope a nivel del suelo). La corrida usa abrir_cmi() + tb_en() con la altura del tope."""
+    c = abrir_cmi()
+    return [tb_en(c, la, lo, 0.0, radio_km) for la, lo in celdas_xy], c["hora"]
 
 def paralaje_km(lat, lon, altura_m, sublon=-75.2):
-    """Corrimiento (km) de una nube alta vista por el satélite: aparece desplazada hacia el punto subsatélite
-    (ecuador, sublon). Devuelve (d_km, vza_rad); la posición real queda a d_km del aparente, alejándose del subsatélite."""
+    """Corrimiento (km) con que se ve una nube alta: su tope aparece desplazado d_km LEJOS del punto subsatélite (ecuador, sublon)
+    respecto de su posición real. Devuelve (d_km, vza_rad). tb_en() lo aplica sola al ubicar el píxel; esto sirve para informarlo."""
     vza = np.arccos(np.clip(np.cos(np.radians(lat)) * np.cos(np.radians(lon - sublon)), -1, 1))
     return altura_m / 1000 * np.tan(vza), vza
